@@ -1,0 +1,30 @@
+services:
+  mysql:
+    image: mysql:8.0.45
+    env_file:
+      - .env
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./mysql:/docker-entrypoint-initdb.d
+    ports:
+      - "127.0.0.1:3307:3306"
+
+  webui:
+    build:
+      context: .
+      dockerfile: webui/Dockerfile
+    env_file:
+      - .env
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: ${MYSQL_DATABASE}
+      DB_USER: ${MYSQL_USER}
+      DB_PASSWORD: ${MYSQL_PASSWORD}
+    depends_on:
+      - mysql
+    ports:
+      - "127.0.0.1:8501:8501"
+
+volumes:
+  mysql-data:
