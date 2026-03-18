@@ -14,6 +14,8 @@ public interface TransactionDAO {
     List<Transaction> findByCustomer(String customerName) throws SQLException;
     
     List<Transaction> findByProduct(int productId) throws SQLException;
+
+    List<Transaction> findRecentByProduct(int productId, int limit) throws SQLException;
     
     List<Transaction> findByDateRange(LocalDateTime start, LocalDateTime end) throws SQLException;
     

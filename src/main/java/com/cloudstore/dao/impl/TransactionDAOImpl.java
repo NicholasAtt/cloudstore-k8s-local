@@ -87,6 +87,32 @@ public class TransactionDAOImpl implements TransactionDAO {
         }
         return transactions;
     }
+
+    @Override
+    public List<Transaction> findRecentByProduct(int productId, int limit) throws SQLException {
+        List<Transaction> transactions = new ArrayList<>();
+
+        try (Connection conn = dbConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(
+                 "SELECT t.*, p.* " +
+                 "FROM transactions t " +
+                 "JOIN products p ON t.Product_Id = p.Product_Id " +
+                 "WHERE t.Product_Id = ? " +
+                 "ORDER BY t.Date DESC " +
+                 "LIMIT ?"
+             )) {
+
+            stmt.setInt(1, productId);
+            stmt.setInt(2, Math.max(1, limit));
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    transactions.add(mapResultSetToTransaction(rs));
+                }
+            }
+        }
+        return transactions;
+    }
     
     @Override
     public List<Transaction> findByDateRange(LocalDateTime start, LocalDateTime end) throws SQLException {

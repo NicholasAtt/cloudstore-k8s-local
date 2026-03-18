@@ -17,11 +17,15 @@ import com.cloudstore.utils.DatabaseConnection;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 
 public class CloudStoreFacade {
@@ -106,6 +110,16 @@ public class CloudStoreFacade {
         return productService.findAll();
     }
 
+    public List<String> getProductCategories() throws ServiceException {
+        return productService.findAll().stream()
+                .map(ProductDTO::getDescription)
+                .filter(category -> category != null && !category.isBlank())
+                .map(String::trim)
+                .distinct()
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .collect(Collectors.toList());
+    }
+
     public ProductDTO saveProduct(ProductDTO dto) throws ServiceException {
         return productService.save(dto);
     }
@@ -136,6 +150,77 @@ public class CloudStoreFacade {
 
     public List<UserDTO> getAllUsers() throws ServiceException {
         return userService.findAll();
+    }
+
+    public Map<String, Object> authenticateUser(String nickname, String password) throws ServiceException {
+        UserDTO user = authenticateCredentials(nickname, password);
+
+        String permissionCategory = user.getPermission() != null ? user.getPermission().getCategory() : "";
+        boolean isAdmin = permissionCategory != null
+                && permissionCategory.toLowerCase(Locale.ROOT).contains("admin");
+
+        Map<String, Object> safeUser = new HashMap<>();
+        safeUser.put("nickname", user.getNickname());
+        safeUser.put("name", user.getName());
+        safeUser.put("surname", user.getSurname());
+        safeUser.put("email", user.getEmail());
+        safeUser.put("permission", user.getPermission());
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("user", safeUser);
+        result.put("role", isAdmin ? "admin" : "customer");
+        result.put("isAdmin", isAdmin);
+        return result;
+    }
+
+    public void assertAdminAccess(String nickname, String password) throws ServiceException {
+        UserDTO user = authenticateCredentials(nickname, password);
+        String permissionCategory = user.getPermission() != null ? user.getPermission().getCategory() : "";
+        boolean isAdmin = permissionCategory != null
+                && permissionCategory.toLowerCase(Locale.ROOT).contains("admin");
+        if (!isAdmin) {
+            throw new ServiceException("Admin access required");
+        }
+    }
+
+    private UserDTO authenticateCredentials(String nickname, String password) throws ServiceException {
+        if (nickname == null || nickname.isBlank()) {
+            throw new ServiceException("Nickname cannot be empty");
+        }
+        if (password == null || password.isBlank()) {
+            throw new ServiceException("Password cannot be empty");
+        }
+
+        UserDTO user = userService.findByNickname(nickname)
+                .orElseThrow(() -> new ServiceException("Invalid credentials"));
+
+        if (!password.equals(user.getPassword())) {
+            throw new ServiceException("Invalid credentials");
+        }
+        return user;
+    }
+
+    public Map<String, Object> getCustomerCheckoutContext(String customerName, Map<Integer, Integer> items) throws ServiceException {
+        if (customerName == null || customerName.isBlank()) {
+            throw new ServiceException("Customer name cannot be empty");
+        }
+
+        String customerCategory = resolveCustomerCategory(customerName);
+        int sampleWindow = 5;
+        Map<String, Object> discountContext = resolveDiscountForCartItems(items, sampleWindow);
+        float discount = (float) discountContext.get("discount");
+        int sampleSize = (int) discountContext.get("sampleSize");
+        String discountSource = (String) discountContext.get("discountSource");
+
+        Map<String, Object> context = new HashMap<>();
+        context.put("customerName", customerName);
+        context.put("customerCategory", customerCategory);
+        context.put("discount", discount);
+        context.put("discountApplied", discount > 0 ? 1 : 0);
+        context.put("discountSource", discountSource);
+        context.put("sampleSize", sampleSize);
+        context.put("sampleWindow", sampleWindow);
+        return context;
     }
 
     public UserDTO registerUser(UserDTO dto) throws ServiceException {
@@ -211,7 +296,14 @@ public class CloudStoreFacade {
         if (dto.getProductDetails() == null) {
             throw new ServiceException("Transaction must specify a product");
         }
+        if (dto.getTotalItems() <= 0) {
+            throw new ServiceException("Number of items must be greater than zero");
+        }
         int productId = dto.getProductDetails().getId();
+
+        float normalizedDiscount = Math.max(0.0f, Math.min(dto.getDiscount(), 1.0f));
+        dto.setDiscount(normalizedDiscount);
+        dto.setDiscountApplied(normalizedDiscount > 0 ? 1 : 0);
 
         try (Connection conn = dbConnection.getConnection()) {
             conn.setAutoCommit(false);
@@ -224,6 +316,11 @@ public class CloudStoreFacade {
                         "Insufficient stock for '%s': available %d, requested %d",
                             product.name(), product.stock(), dto.getTotalItems()));
                 }
+
+                double grossTotal = product.price() * dto.getTotalItems();
+                double netTotal = grossTotal * (1 - normalizedDiscount);
+                dto.setProduct(product.name());
+                dto.setTotalCost(netTotal);
 
                 Transaction saved = transactionDAO.save(conn, DTOMapper.toEntity(dto));
                 boolean stockUpdated = productDAO.updateStock(conn, productId, product.stock() - dto.getTotalItems());
@@ -242,6 +339,159 @@ public class CloudStoreFacade {
         } catch (SQLException e) {
             throw new ServiceException("Error during atomic order processing", e);
         }
+    }
+
+        public Map<String, Object> processCartOrder(
+            String customerName,
+            String paymentMethod,
+            String city,
+            Map<Integer, Integer> items) throws ServiceException {
+
+        if (customerName == null || customerName.isBlank()) {
+            throw new ServiceException("Customer name cannot be empty");
+        }
+        if (items == null || items.isEmpty()) {
+            throw new ServiceException("Cart is empty");
+        }
+
+        String customerCategory = resolveCustomerCategory(customerName);
+        Map<String, Object> discountContext = resolveDiscountForCartItems(items, 5);
+        float normalizedDiscount = (float) discountContext.get("discount");
+        LocalDateTime now = LocalDateTime.now();
+
+        List<Map.Entry<Integer, Integer>> sortedItems = new ArrayList<>(items.entrySet());
+        sortedItems.sort(Comparator.comparingInt(Map.Entry::getKey));
+
+        try (Connection conn = dbConnection.getConnection()) {
+            conn.setAutoCommit(false);
+            try {
+                List<TransactionDTO> createdTransactions = new ArrayList<>();
+                double cartTotal = 0.0;
+                int totalItems = 0;
+
+                for (Map.Entry<Integer, Integer> entry : sortedItems) {
+                    int productId = entry.getKey();
+                    int quantity = entry.getValue();
+
+                    if (quantity <= 0) {
+                        throw new ServiceException("Quantity must be greater than zero for product ID: " + productId);
+                    }
+
+                    Product product = productDAO.findByIdForUpdate(conn, productId)
+                            .orElseThrow(() -> new ServiceException("Product not found with ID: " + productId));
+
+                    if (product.stock() < quantity) {
+                        throw new ServiceException(String.format(
+                                "Insufficient stock for '%s': available %d, requested %d",
+                                product.name(), product.stock(), quantity));
+                    }
+
+                    double lineTotal = product.price() * quantity * (1 - normalizedDiscount);
+                    TransactionDTO dto = new TransactionDTO();
+                    dto.setDate(now);
+                    dto.setCustomerName(customerName);
+                    dto.setProduct(product.name());
+                    dto.setTotalItems(quantity);
+                    dto.setTotalCost(lineTotal);
+                    dto.setPaymentMethod(paymentMethod);
+                    dto.setCity(city);
+                    dto.setDiscountApplied(normalizedDiscount > 0 ? 1 : 0);
+                    dto.setCustomerCategory(customerCategory);
+                    dto.setDiscount(normalizedDiscount);
+                    dto.setProductDetails(new ProductDTO(product.id(), product.name(), product.category(), product.price(), product.stock()));
+
+                    Transaction saved = transactionDAO.save(conn, DTOMapper.toEntity(dto));
+                    boolean stockUpdated = productDAO.updateStock(conn, productId, product.stock() - quantity);
+                    if (!stockUpdated) {
+                        throw new ServiceException("Stock update failed for product ID: " + productId);
+                    }
+
+                    TransactionDTO savedDto = DTOMapper.toDTO(saved);
+                    createdTransactions.add(savedDto);
+                    cartTotal += savedDto.getTotalCost();
+                    totalItems += savedDto.getTotalItems();
+                }
+
+                conn.commit();
+
+                Map<String, Object> result = new HashMap<>();
+                result.put("transactions", createdTransactions);
+                result.put("totalItems", totalItems);
+                result.put("cartTotal", cartTotal);
+                result.put("lines", createdTransactions.size());
+                return result;
+            } catch (Exception e) {
+                conn.rollback();
+                throw e;
+            } finally {
+                conn.setAutoCommit(true);
+            }
+        } catch (SQLException e) {
+            throw new ServiceException("Error during atomic cart processing", e);
+        }
+    }
+
+    private String resolveCustomerCategory(String customerName) throws ServiceException {
+        Optional<UserDTO> userOpt = userService.findByNickname(customerName);
+        if (userOpt.isPresent()) {
+            UserDTO user = userOpt.get();
+            if (user.getPermission() != null && user.getPermission().getCategory() != null
+                    && !user.getPermission().getCategory().isBlank()) {
+                return user.getPermission().getCategory();
+            }
+        }
+        return "Customer";
+    }
+
+    private Map<String, Object> resolveDiscountForCartItems(Map<Integer, Integer> items, int sampleWindow) throws ServiceException {
+        Map<String, Object> result = new HashMap<>();
+        if (items == null || items.isEmpty()) {
+            result.put("discount", 0.0f);
+            result.put("sampleSize", 0);
+            result.put("discountSource", "no_cart_items");
+            return result;
+        }
+
+        int limit = Math.max(1, sampleWindow);
+        double weightedDiscountSum = 0.0;
+        int weightedQuantity = 0;
+        int sampleSize = 0;
+
+        // Compute average discount from recent transactions for each product and weight by cart quantity.
+        for (Map.Entry<Integer, Integer> entry : items.entrySet()) {
+            int productId = entry.getKey();
+            int quantity = Math.max(0, entry.getValue());
+            if (quantity <= 0) {
+                continue;
+            }
+
+            List<TransactionDTO> productTransactions = resolveRecentTransactionsForProductDiscount(productId, limit);
+            if (productTransactions.isEmpty()) {
+                continue;
+            }
+
+            double productAverage = productTransactions.stream()
+                    .mapToDouble(tx -> Math.max(0.0f, Math.min(tx.getDiscount(), 1.0f)))
+                    .average()
+                    .orElse(0.0);
+
+            weightedDiscountSum += productAverage * quantity;
+            weightedQuantity += quantity;
+            sampleSize += productTransactions.size();
+        }
+
+        float discount = weightedQuantity > 0
+                ? (float) Math.max(0.0, Math.min(weightedDiscountSum / weightedQuantity, 1.0))
+                : 0.0f;
+
+        result.put("discount", discount);
+        result.put("sampleSize", sampleSize);
+        result.put("discountSource", weightedQuantity > 0 ? "recent_product_average_discount" : "no_product_history");
+        return result;
+    }
+
+    private List<TransactionDTO> resolveRecentTransactionsForProductDiscount(int productId, int maxItems) throws ServiceException {
+        return transactionService.findRecentByProduct(productId, Math.max(1, maxItems));
     }
 
     public Map<String, Object> getDashboardStats() throws ServiceException {

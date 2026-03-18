@@ -15,6 +15,8 @@ public interface TransactionService {
 
     List<TransactionDTO> findByProduct(int productId) throws ServiceException;
 
+    List<TransactionDTO> findRecentByProduct(int productId, int limit) throws ServiceException;
+
     List<TransactionDTO> findByDateRange(LocalDateTime start, LocalDateTime end) throws ServiceException;
 
     List<TransactionDTO> findByPaymentMethod(String paymentMethod) throws ServiceException;

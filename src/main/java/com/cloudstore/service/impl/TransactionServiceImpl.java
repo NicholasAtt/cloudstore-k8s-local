@@ -62,6 +62,17 @@ public class TransactionServiceImpl implements TransactionService {
     }
 
     @Override
+    public List<TransactionDTO> findRecentByProduct(int productId, int limit) throws ServiceException {
+        try {
+            return transactionDAO.findRecentByProduct(productId, limit).stream()
+                    .map(DTOMapper::toDTO)
+                    .collect(Collectors.toList());
+        } catch (SQLException e) {
+            throw new ServiceException("Error searching recent transactions for product ID: " + productId, e);
+        }
+    }
+
+    @Override
     public List<TransactionDTO> findByDateRange(LocalDateTime start, LocalDateTime end) throws ServiceException {
         if (start.isAfter(end)) {
             throw new ServiceException("Start date cannot be after end date");
