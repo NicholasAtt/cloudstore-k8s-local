@@ -14,7 +14,7 @@ import java.lang.reflect.Method;
 import java.util.*;
 import java.util.concurrent.Executors;
 import service.security.SecurityContext;
-import model.dto.auth.LoginResult;
+import model.dto.auth.AuthenticationResult;
 
 public class JavaFacadeWrapper {
     
@@ -88,7 +88,7 @@ public class JavaFacadeWrapper {
                 if (authHeader != null && authHeader.startsWith("Bearer ")) {
                     String token = authHeader.substring(7);
                     try {
-                        LoginResult session = FACADE.getSessionFromToken(token);
+                        AuthenticationResult session = FACADE.getSessionFromToken(token);
                         SecurityContext.set(session);
                     } catch (Exception e) {
                         System.err.println("Invalid token: " + e.getMessage());

@@ -1,6 +1,7 @@
 package service.security;
 
 import model.dto.auth.LoginResult;
+import model.dto.auth.AuthenticationResult;
 import service.exception.ServiceException;
 
 /**
@@ -9,13 +10,13 @@ import service.exception.ServiceException;
  * the business layer to authorize requests without requiring token parameters.
  */
 public class SecurityContext {
-    private static final ThreadLocal<LoginResult> currentUser = new ThreadLocal<>();
+    private static final ThreadLocal<AuthenticationResult> currentUser = new ThreadLocal<>();
 
-    public static void set(LoginResult login) {
+    public static void set(AuthenticationResult login) {
         currentUser.set(login);
     }
 
-    public static LoginResult get() {
+    public static AuthenticationResult get() {
         return currentUser.get();
     }
 

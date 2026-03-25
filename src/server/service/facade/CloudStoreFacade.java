@@ -6,7 +6,6 @@ import model.dto.auth.LoginResult;
 import service.exception.ServiceException;
 import service.interfaces.*;
 import service.impl.*;
-import service.security.SecurityContext;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -214,15 +213,7 @@ public class CloudStoreFacade {
         return authService.authenticateUser(nickname, password);
     }
 
-    public AuthenticationResult authenticateByToken(String token) throws ServiceException {
-        return authService.authenticateByToken(token);
-    }
-
-    public boolean validateToken(String token) throws ServiceException {
-        return authService.validateToken(token);
-    }
-
-    public LoginResult getSessionFromToken(String token) throws ServiceException {
+    public AuthenticationResult getSessionFromToken(String token) throws ServiceException {
         return authService.getSessionFromToken(token);
     }
 
