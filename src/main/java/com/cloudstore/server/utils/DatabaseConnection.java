@@ -1,6 +1,8 @@
 package com.cloudstore.server.utils;
 
 import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
 
 public class DatabaseConnection {
     private static DatabaseConnection instance; // Singleton instance
@@ -19,11 +21,26 @@ public class DatabaseConnection {
         username = getRequiredEnv("DB_USER");
         password = getRequiredEnv("DB_PASSWORD");
         
-        
-        connectionUrl = String.format(
-            "jdbc:mysql://%s:%s/%s?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true",
-            host, port, database
-        );
+        connectionUrl = String.format("jdbc:mysql://%s:%s/%s?%s", host, port, database, buildConnectionOptions());
+    }
+
+    private String buildConnectionOptions() {
+        List<String> options = new ArrayList<>();
+        options.add("sslMode=" + getOptionalEnv("DB_SSL_MODE", "PREFERRED"));
+        options.add("serverTimezone=" + getOptionalEnv("DB_SERVER_TIMEZONE", "UTC"));
+        options.add("allowPublicKeyRetrieval=" + getOptionalEnv("DB_ALLOW_PUBLIC_KEY_RETRIEVAL", "true"));
+
+        String trustCertPath = getOptionalEnv("DB_TRUST_CERT_PATH", "");
+        if (!trustCertPath.isBlank()) {
+            options.add("trustCertificateKeyStoreUrl=file:" + trustCertPath);
+        }
+
+        String trustCertPassword = getOptionalEnv("DB_TRUST_CERT_PASSWORD", "");
+        if (!trustCertPassword.isBlank()) {
+            options.add("trustCertificateKeyStorePassword=" + trustCertPassword);
+        }
+
+        return String.join("&", options);
     }
     
     /**
@@ -38,6 +55,11 @@ public class DatabaseConnection {
             throw new IllegalStateException("Missing required environment variable: " + key);
         }
         return value;
+    }
+
+    private String getOptionalEnv(String key, String defaultValue) {
+        String value = System.getenv(key);
+        return (value == null || value.isBlank()) ? defaultValue : value;
     }
     
     /**

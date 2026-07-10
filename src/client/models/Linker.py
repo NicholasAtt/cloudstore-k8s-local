@@ -18,9 +18,14 @@ class Linker:
     
     def __init__(self, token=None):
         self.token = token
-        backend_host = os.getenv('BACKEND_HOST', 'server')
-        backend_port = os.getenv('BACKEND_PORT', '9999')
-        self.backend_url = f"http://{backend_host}:{backend_port}"
+        backend_url = os.getenv('BACKEND_URL')
+        if backend_url:
+            self.backend_url = backend_url.rstrip("/")
+        else:
+            backend_scheme = os.getenv('BACKEND_SCHEME', 'http')
+            backend_host = os.getenv('BACKEND_HOST', 'server')
+            backend_port = os.getenv('BACKEND_PORT', '9999')
+            self.backend_url = f"{backend_scheme}://{backend_host}:{backend_port}"
         print(f"Backend URL: {self.backend_url}", file=sys.stderr)
         
         self._test_connection()
@@ -44,7 +49,7 @@ class Linker:
         except requests.exceptions.ConnectionError as e:
             print(f"CRITICAL: Cannot connect to backend at {self.backend_url}", file=sys.stderr)
             print(f"Error: {e}", file=sys.stderr)
-            print("Make sure the backend container is running and port 9999 is exposed", file=sys.stderr)
+            print(f"Make sure the backend container is running and reachable at {self.backend_url}", file=sys.stderr)
         except Exception as e:
             print(f"Backend test failed: {e}", file=sys.stderr)
     
@@ -342,24 +347,6 @@ class Linker:
             if product_id > 0 and quantity > 0:
                 normalized_items[product_id] = quantity
         return self._call_authenticated_facade("processCartOrder", customer_name, payment_method, city, normalized_items)
-    
-    """ Get shopping advice for a customer based on their cart items and a prompt. Requires authentication.
-    
-    Args:
-        customer_name (str): The name of the customer.
-        prompt (str): The prompt to provide context for the advice.
-        items (list): A list of items in the customer's cart.
-    Returns:
-        The result of the backend API call.
-    """
-    def get_customer_shopping_advice(self, customer_name, prompt, items=None):
-        normalized_items = {}
-        for item in items or []:
-            product_id = int(item.get("product_id", 0))
-            quantity = int(item.get("quantity", 0))
-            if product_id > 0 and quantity > 0:
-                normalized_items[product_id] = quantity
-        return self._call_authenticated_facade("getCustomerShoppingAdvice", customer_name, prompt, normalized_items)
     
     """ Get dashboard statistics for the authenticated user, including total products, users, transactions, and sales. Requires authentication.
     

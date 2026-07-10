@@ -15,7 +15,6 @@ cp .env.example .env
 Then edit `.env` and set values, especially:
 
 - `JWT_SECRET` must be Base64 and at least 32 bytes after decoding.
-- `LLM_SERVICE_URL` must point to the assistant endpoint used by backend (default in compose: `http://llm-assistant:8000/chat`).
 
 Generate a secure secret:
 
@@ -30,28 +29,6 @@ Paste it into `JWT_SECRET` in `.env`.
 ```bash
 docker compose up -d --build
 ```
-
-## Customer Shopping Assistant (LLM)
-
-- New container: `llm-assistant` (FastAPI) is started by Docker Compose.
-- New free LLM runtime container: `ollama`.
-- Backend calls it through `LLM_SERVICE_URL` and exposes customer-only facade method `getCustomerShoppingAdvice`.
-- Frontend customer view includes a `Shopping Assistant` tab.
-
-Required Ollama setup in `.env`:
-
-```bash
-OLLAMA_BASE_URL=http://ollama:11434
-OLLAMA_MODEL=llama3.2:3b
-```
-
-Then pull the model once:
-
-```bash
-docker compose exec ollama ollama pull llama3.2:3b
-```
-
-If model is not available yet, assistant still works with rule-based suggestions.
 
 ## Redis Inspection (Keys, Types, TTL)
 

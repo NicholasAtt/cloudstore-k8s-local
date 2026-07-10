@@ -1,7 +1,6 @@
 package com.cloudstore.server.service.facade;
 
 import com.cloudstore.server.model.dto.*;
-import com.cloudstore.server.model.domain.CheckoutContext;
 import com.cloudstore.server.model.domain.OrderSubmissionResult;
 import com.cloudstore.server.model.dto.auth.AuthenticationResult;
 import com.cloudstore.server.model.dto.auth.LoginResult;
@@ -27,7 +26,6 @@ public class CloudStoreFacade {
     private final AuthService authService;                  // Service for handling authentication and authorization
     private final CartService cartService;                  // Service for managing shopping cart operations
     private final DashboardService dashboardService;        // Service for providing dashboard statistics and user profiles
-    private final ShoppingAdvisorService shoppingAdvisorService; // Service for customer shopping advice
     private final AccessControl accessControl;              // Service for role-based access control
     private final OrderProcessingService orderProcessingService; // Application service for async order dispatch
 
@@ -41,7 +39,6 @@ public class CloudStoreFacade {
             this.authService = new AuthServiceImpl();
             this.cartService = new CartServiceImpl();
             this.dashboardService = new DashboardServiceImpl();
-            this.shoppingAdvisorService = new ShoppingAdvisorServiceImpl();
             this.accessControl = new AccessControl();
             this.orderProcessingService = new OrderProcessingServiceImpl();
         } catch (Exception e) {
@@ -59,15 +56,14 @@ public class CloudStoreFacade {
          * @param authService The service for handling authentication.
          * @param cartService The service for managing shopping cart operations.
          * @param dashboardService The service for dashboard statistics.
-         * @param shoppingAdvisorService The service for customer shopping advice.
          * @param accessControl The service for role-based access control.
          * @param orderProcessingService The application service for async order dispatch.
     **/
     public CloudStoreFacade(PermissionService permissionService, ProductService productService,
                             UserService userService, TransactionService transactionService,
                             AuthService authService, CartService cartService,
-                            DashboardService dashboardService, ShoppingAdvisorService shoppingAdvisorService,
-                            AccessControl accessControl, OrderProcessingService orderProcessingService) {
+                            DashboardService dashboardService, AccessControl accessControl,
+                            OrderProcessingService orderProcessingService) {
         this.permissionService = permissionService;
         this.productService = productService;
         this.userService = userService;
@@ -75,19 +71,18 @@ public class CloudStoreFacade {
         this.authService = authService;
         this.cartService = cartService;
         this.dashboardService = dashboardService;
-        this.shoppingAdvisorService = shoppingAdvisorService;
         this.accessControl = accessControl;
         this.orderProcessingService = orderProcessingService;
     }
 
-    // Convenience constructor that initializes ShoppingAdvisorService and OrderProcessingService with defaults
+    // Convenience constructor that initializes OrderProcessingService with defaults
     public CloudStoreFacade(PermissionService permissionService, ProductService productService,
                             UserService userService, TransactionService transactionService,
                             AuthService authService, CartService cartService,
                             DashboardService dashboardService, AccessControl accessControl) {
         this(permissionService, productService, userService, transactionService,
-                authService, cartService, dashboardService, new ShoppingAdvisorServiceImpl(),
-                accessControl, new OrderProcessingServiceImpl());
+                authService, cartService, dashboardService, accessControl,
+                new OrderProcessingServiceImpl());
     }
 
     // RBAC
@@ -318,24 +313,6 @@ public class CloudStoreFacade {
 
     public UserProfileDTO getUserProfile(String nickname) throws ServiceException {
         return customerMethod(nickname, () -> DTOMapper.toDTO(dashboardService.getUserProfile(nickname)));
-    }
-
-    public Map<String, Object> getCustomerShoppingAdvice(String customerName, String prompt,
-                                                         Map<Integer, Integer> items) throws ServiceException {
-        Map<Integer, Integer> normalizedItems = items != null ? items : Map.of();
-        return customerMethod(customerName, () -> {
-            CheckoutContext checkoutContext = cartService.getCheckoutContext(customerName, normalizedItems);
-            List<com.cloudstore.server.model.entities.Transaction> orderHistory =
-                    transactionService.findByCustomer(customerName);
-            return shoppingAdvisorService.getAdvice(
-                    customerName,
-                    prompt,
-                    normalizedItems,
-                    productService.findAll(),
-                    checkoutContext,
-                    orderHistory
-            );
-        });
     }
 
     // UTILITIES

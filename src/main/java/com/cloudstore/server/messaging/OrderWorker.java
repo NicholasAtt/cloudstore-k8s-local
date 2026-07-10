@@ -58,9 +58,7 @@ public class OrderWorker implements Runnable, AutoCloseable {
         }
         this.cartService = cartService;
         
-        this.factory = new ConnectionFactory();
-        String host = System.getenv("RABBITMQ_HOST");
-        this.factory.setHost((host == null || host.trim().isEmpty()) ? "localhost" : host);
+        this.factory = RabbitMqConnectionFactoryProvider.create();
         
         // Enable automatic recovery for potential network drops after the initial startup
         this.factory.setAutomaticRecoveryEnabled(true);

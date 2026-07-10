@@ -4,18 +4,16 @@ services:
     env_file:
       - .env
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
-      MYSQL_DATABASE: ${DB_NAME}
-      MYSQL_USER: ${DB_USER}
-      MYSQL_PASSWORD: ${DB_PASSWORD}
-    command: --port=${DB_PORT}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME:?set DB_NAME}
+      MYSQL_USER: ${DB_USER:?set DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+    command: --port=${DB_PORT:?set DB_PORT}
     volumes:
       - mysql-data:/var/lib/mysql
       - ./mysql:/docker-entrypoint-initdb.d
-    ports:
-      - "127.0.0.1:${DB_PORT}:${DB_PORT}"
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-P", "${DB_PORT}", "-u", "root", "-p${DB_PASSWORD}"]
+      test: ["CMD-SHELL", "mysqladmin ping -P \"$${DB_PORT}\" -u root -p\"$${MYSQL_ROOT_PASSWORD}\""]
       timeout: 20s
       retries: 10
     networks:
@@ -29,38 +27,76 @@ services:
       - .env
     environment:
       DB_HOST: mysql
-      DB_PORT: ${DB_PORT}
-      DB_NAME: ${DB_NAME}
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
-      JWT_SECRET: ${JWT_SECRET}
-      JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS}
+      DB_PORT: ${DB_PORT:?set DB_PORT}
+      DB_NAME: ${DB_NAME:?set DB_NAME}
+      DB_USER: ${DB_USER:?set DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+      DB_SSL_MODE: ${DB_SSL_MODE:-PREFERRED}
+      DB_SERVER_TIMEZONE: ${DB_SERVER_TIMEZONE:-UTC}
+      DB_ALLOW_PUBLIC_KEY_RETRIEVAL: ${DB_ALLOW_PUBLIC_KEY_RETRIEVAL:-true}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+      JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:?set JWT_EXPIRATION_MS}
       JWT_ISSUER: ${JWT_ISSUER}
       JWT_AUDIENCE: ${JWT_AUDIENCE}
+      SERVER_BIND_ADDRESS: ${SERVER_BIND_ADDRESS:-0.0.0.0}
+      SERVER_PORT: ${SERVER_PORT:-9999}
       REDIS_HOST: redis
-      REDIS_PORT: 6379
-      LLM_SERVICE_URL: ${LLM_SERVICE_URL}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_TLS_ENABLED: ${REDIS_TLS_ENABLED:-false}
       RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:?set RABBITMQ_USERNAME}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST:-/}
+      RABBITMQ_TLS_ENABLED: ${RABBITMQ_TLS_ENABLED:-false}
     depends_on:
       mysql:
         condition: service_healthy
       redis:
         condition: service_healthy
-      llm-assistant:
-        condition: service_healthy
       rabbitmq:
         condition: service_healthy
     ports:
-      - "127.0.0.1:9999:9999"
+      - "${SERVER_PORT:-9999}:${SERVER_PORT:-9999}"
+    networks:
+      - cloudstore-network
+    restart: unless-stopped
+
+  order-worker:
+    build:
+      context: ./src/main/java/com/cloudstore/server
+      dockerfile: Dockerfile
+    command: ["java", "-cp", "/app/classes:/app/dependency/*", "com.cloudstore.server.messaging.OrderWorkerApplication"]
+    env_file:
+      - .env
+    environment:
+      DB_HOST: mysql
+      DB_PORT: ${DB_PORT:?set DB_PORT}
+      DB_NAME: ${DB_NAME:?set DB_NAME}
+      DB_USER: ${DB_USER:?set DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+      DB_SSL_MODE: ${DB_SSL_MODE:-PREFERRED}
+      DB_SERVER_TIMEZONE: ${DB_SERVER_TIMEZONE:-UTC}
+      DB_ALLOW_PUBLIC_KEY_RETRIEVAL: ${DB_ALLOW_PUBLIC_KEY_RETRIEVAL:-true}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:?set RABBITMQ_USERNAME}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST:-/}
+      RABBITMQ_TLS_ENABLED: ${RABBITMQ_TLS_ENABLED:-false}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     networks:
       - cloudstore-network
     restart: unless-stopped
 
   redis:
     image: redis:8.6.1   
-    container_name: redis
-    ports:
-      - "127.0.0.1:6379:6379"   
+    container_name: redis  
     volumes:
       - redis_data:/data
     networks:
@@ -75,9 +111,10 @@ services:
   rabbitmq:
     image: rabbitmq:4.3.0-management
     container_name: rabbitmq
-    ports:
-      - "127.0.0.1:5672:5672"
-      - "127.0.0.1:15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:?set RABBITMQ_USERNAME}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-/}
     networks:
       - cloudstore-network
     restart: unless-stopped
@@ -87,52 +124,18 @@ services:
       timeout: 5s
       retries: 5
 
-  llm-assistant:
-    build:
-      context: ./src/llm-assistant
-      dockerfile: Dockerfile
-    env_file:
-      - .env
-    environment:
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
-      OLLAMA_MODEL: ${OLLAMA_MODEL}
-    depends_on:
-      ollama:
-        condition: service_started
-    ports:
-      - "127.0.0.1:8000:8000"
-    networks:
-      - cloudstore-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  ollama:
-    image: ollama/ollama:0.11.4
-    ports:
-      - "127.0.0.1:11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    networks:
-      - cloudstore-network
-    restart: unless-stopped
-
   client:
     build:
       context: ./src/client
       dockerfile: Dockerfile
-    env_file:
-      - .env
     environment:
+      BACKEND_SCHEME: ${BACKEND_SCHEME:-http}
       BACKEND_HOST: server
-      BACKEND_PORT: 9999
+      BACKEND_PORT: ${SERVER_PORT:-9999}
     depends_on:
       - server
     ports:
-      - "127.0.0.1:8501:8501"
+      - "8501:8501"
     networks:
       - cloudstore-network
     restart: unless-stopped
@@ -140,7 +143,6 @@ services:
 volumes:
   mysql-data:
   redis_data:
-  ollama_data:
 
 networks:
   cloudstore-network:

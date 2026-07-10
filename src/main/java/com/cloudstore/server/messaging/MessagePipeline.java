@@ -30,9 +30,7 @@ public class MessagePipeline implements AutoCloseable {
         * @throws ServiceException If initialization fails due to connection or timeout issues.
     **/
     public MessagePipeline() throws ServiceException {
-        ConnectionFactory factory = new ConnectionFactory();
-        String host = System.getenv("RABBITMQ_HOST");
-        factory.setHost((host == null || host.trim().isEmpty()) ? "localhost" : host);
+        ConnectionFactory factory = RabbitMqConnectionFactoryProvider.create();
         
         try {
             this.connection = factory.newConnection("CloudStore:Publisher");

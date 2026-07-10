@@ -266,10 +266,7 @@ def _reset_session_after_logout():
     st.session_state.auth_role = None
     st.session_state.auth_token = None
     st.session_state.user_cart = {}
-    st.session_state.customer_last_advice = None
     st.session_state.customer_pause_autorefresh = False
-    st.session_state.customer_pending_advice = False
-    st.session_state.customer_tab_target = None
     st.session_state.linker = None
     _clear_auth_from_url()
 
@@ -347,16 +344,8 @@ def _render_customer_view(linker, current_user):
     else:
         products = linker.list_products_by_category(selected_category)
 
-    # Gestione della navigazione tra i tab
-    tab_target = st.session_state.get("customer_tab_target")
-    if tab_target in {"Catalog", "Cart", "Shopping Assistant"}:
-        st.session_state.customer_active_tab = tab_target
-        st.session_state.customer_tab_target = None
-    elif st.session_state.get("customer_pending_advice"):
-        st.session_state.customer_active_tab = "Shopping Assistant"
-    
     # Inizializza il tab attivo se non esiste
-    if "customer_active_tab" not in st.session_state:
+    if st.session_state.get("customer_active_tab") not in {"Catalog", "Cart"}:
         st.session_state.customer_active_tab = "Catalog"
 
     # CSS per i tab stilizzati
@@ -407,7 +396,7 @@ def _render_customer_view(linker, current_user):
 
     active_tab = st.radio(
         "",
-        ["Catalog", "Cart", "Shopping Assistant"],
+        ["Catalog", "Cart"],
         key="customer_active_tab",
         horizontal=True,
         label_visibility="collapsed",
@@ -467,7 +456,7 @@ def _render_customer_view(linker, current_user):
                                 }
                                 st.success(f"Added {int(qty)} x {product['name']} to cart")
 
-    elif active_tab == "Cart":
+    else:
         st.markdown("### Cart")
 
         cart_items = list(st.session_state.user_cart.values())
@@ -581,53 +570,6 @@ def _render_customer_view(linker, current_user):
                             raise
                         st.error(str(e))
 
-    else:  # Shopping Assistant
-        st.markdown("### Shopping Assistant")
-        st.caption("Customer-only assistant that suggests what to buy based on your cart and discount profile")
-
-        prompt = st.text_area(
-            "What do you want to buy today?",
-            value="Consigliami 2-3 prodotti da aggiungere al carrello con il miglior rapporto qualità/prezzo.",
-            height=110,
-            key="customer_advice_prompt",
-        )
-
-        if st.button("Get suggestions", type="primary", use_container_width=True):
-            st.session_state.customer_tab_target = "Shopping Assistant"
-            st.session_state.customer_pause_autorefresh = True
-            st.session_state.customer_pending_advice = True
-            st.rerun()
-
-        if st.session_state.get("customer_pending_advice"):
-            try:
-                with st.spinner("Generating suggestions..."):
-                    advice = linker.get_customer_shopping_advice(
-                        customer_name=current_user.get("nickname", ""),
-                        prompt=prompt,
-                        items=list(st.session_state.user_cart.values()),
-                    )
-                if not advice:
-                    st.warning("Assistant returned an empty response. Please try again.")
-                st.session_state.customer_last_advice = advice
-                st.session_state.customer_pending_advice = False
-                st.rerun()
-            except Exception as e:
-                st.session_state.customer_pending_advice = False
-                st.session_state.customer_pause_autorefresh = False
-                if "token" in str(e).lower():
-                    raise
-                st.error(str(e))
-
-        advice = st.session_state.get("customer_last_advice")
-        if not advice:
-            st.info("Ask a question and press Get suggestions to see the assistant response.")
-        if advice:
-            st.markdown("#### Assistant response")
-            st.write(advice.get("message", "No response available"))
-            source = advice.get("source")
-            if source:
-                st.caption(f"Source: {source}")
-                
 def _render_admin_view(linker, current_user):
     c1, c2 = st.columns([4, 1])
     c1.subheader(f"Admin Control Panel - {current_user.get('nickname', '')}")
@@ -1000,14 +942,8 @@ def main():
         st.session_state.auth_role = "customer"
     if "auth_token" not in st.session_state:
         st.session_state.auth_token = None
-    if "customer_last_advice" not in st.session_state:
-        st.session_state.customer_last_advice = None
     if "customer_pause_autorefresh" not in st.session_state:
         st.session_state.customer_pause_autorefresh = False
-    if "customer_pending_advice" not in st.session_state:
-        st.session_state.customer_pending_advice = False
-    if "customer_tab_target" not in st.session_state:
-        st.session_state.customer_tab_target = None
 
     if st.session_state.auth_user is None and not st.session_state.auth_token:
         _restore_session_from_url()
