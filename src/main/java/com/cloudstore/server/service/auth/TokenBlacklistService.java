@@ -16,18 +16,14 @@ public class TokenBlacklistService {
     private static final String PREFIX = "blacklist:";
 
     /**
-         * Reads REDIS_HOST / REDIS_PORT from environment variables.
-         * Defaults: localhost / 6379.
+         * Reads Redis connection settings from environment variables.
          * Connection timeout: 2 s; socket timeout: 2 s; pool size: 8 connections.
      */
     public TokenBlacklistService() {    
-        String host = System.getenv().getOrDefault("REDIS_HOST", "localhost");
-        int port;
-        try {
-            port = Integer.parseInt(System.getenv().getOrDefault("REDIS_PORT", "6379"));
-        } catch (NumberFormatException e) {
-            port = 6379;
-        }
+        String host = getRequiredEnv("REDIS_HOST");
+        int port = getIntEnv("REDIS_PORT", 6379);
+        boolean tlsEnabled = Boolean.parseBoolean(System.getenv().getOrDefault("REDIS_TLS_ENABLED", "false"));
+        String password = System.getenv("REDIS_PASSWORD");
 
         // Pool configuration
         ConnectionPoolConfig poolConfig = new ConnectionPoolConfig();
@@ -35,10 +31,16 @@ public class TokenBlacklistService {
         poolConfig.setMaxWait(Duration.ofSeconds(2));
 
         // Client configuration (timeouts)
-        DefaultJedisClientConfig clientConfig = DefaultJedisClientConfig.builder()
+        DefaultJedisClientConfig.Builder clientConfigBuilder = DefaultJedisClientConfig.builder()
                 .connectionTimeoutMillis(2000)
                 .socketTimeoutMillis(2000)
-                .build();
+                .ssl(tlsEnabled);
+
+        if (password != null && !password.isBlank()) {
+            clientConfigBuilder.password(password);
+        }
+
+        DefaultJedisClientConfig clientConfig = clientConfigBuilder.build();
 
         // Build RedisClient using the recommended builder
         this.redisClient = RedisClient.builder()
@@ -55,6 +57,26 @@ public class TokenBlacklistService {
                 // ignore
             }
         }));
+    }
+
+    private String getRequiredEnv(String key) {
+        String value = System.getenv(key);
+        if (value == null || value.isBlank()) {
+            throw new IllegalStateException("Missing required environment variable: " + key);
+        }
+        return value;
+    }
+
+    private int getIntEnv(String key, int defaultValue) {
+        String value = System.getenv(key);
+        if (value == null || value.isBlank()) {
+            return defaultValue;
+        }
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            throw new IllegalStateException("Invalid integer environment variable: " + key, e);
+        }
     }
 
     /**
