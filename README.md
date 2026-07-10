@@ -37,3 +37,21 @@ List keys with type and TTL:
 ```bash
 docker compose exec redis sh -lc 'redis-cli --scan | while read k; do t=$(redis-cli TYPE "$k"); ttl=$(redis-cli TTL "$k"); printf "%-60s | %-8s | TTL=%s\n" "$k" "$t" "$ttl"; done | sort'
 ```
+
+## Container images
+
+The local Kubernetes version of CloudStore provides two container images published on GitHub Container Registry:
+
+- `ghcr.io/nicholasatt/cloudstore-k8s-local-client:main`
+- `ghcr.io/nicholasatt/cloudstore-k8s-local-server:main`
+
+Both images are built manually from the `main` branch after the project-specific codebase alignment.
+
+Each image includes OCI labels that identify:
+
+- source repository;
+- branch name;
+- component name;
+- commit SHA.
+
+This makes each package traceable to the exact version of the codebase used to build it.
