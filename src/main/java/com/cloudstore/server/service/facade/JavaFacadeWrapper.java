@@ -5,11 +5,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.cloudstore.server.service.exception.ServiceException;
 import com.cloudstore.server.service.security.SecurityContext;
-import com.cloudstore.server.service.interfaces.AuthService;
-import com.cloudstore.server.service.impl.AuthServiceImpl;
 import com.cloudstore.server.model.dto.auth.AuthenticationResult;
-import com.cloudstore.server.messaging.OrderWorker;
-import com.cloudstore.server.service.impl.CartServiceImpl;
 import com.sun.net.httpserver.HttpServer;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpExchange;
@@ -24,7 +20,6 @@ import java.net.InetSocketAddress;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.reflect.Method;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,9 +35,6 @@ public class JavaFacadeWrapper {
     // Facade instance to handle business logic
     private static final CloudStoreFacade FACADE;
 
-    // Port number for the HTTP server
-    private static final int PORT = 9999;
-    
     // Static initializer to set up the facade and JSON mapper
     static {
         MAPPER.registerModule(new JavaTimeModule());
@@ -56,24 +48,16 @@ public class JavaFacadeWrapper {
     /**
         * Main method to start the HTTP server and listen for incoming requests.
         * The server will handle requests to invoke methods on the CloudStoreFacade.
-        * It also initializes background workers and registers graceful shutdown hooks.
+        * It registers graceful shutdown hooks for server resources.
         * @param args Command line arguments.
         * @throws Exception If a critical error occurs during startup.
     **/
     public static void main(String[] args) throws Exception {
 
-        // 1. Initialize and start background components
-        OrderWorker orderWorker = startOrderWorker();
-        
-        // 2. Initialize and start the HTTP server
         HttpServer server = startHttpServer();
 
-        // 3. Register a SINGLE Shutdown Hook to clean up all resources gracefully
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             System.out.println("Shutdown signal received. Closing resources gracefully...");
-            if (orderWorker != null) {
-                orderWorker.close();
-            }
             if (server != null) {
                 // Stop the HTTP server, waiting up to 2 seconds for active requests to finish
                 server.stop(2);
@@ -84,37 +68,30 @@ public class JavaFacadeWrapper {
     }
 
     /**
-        * Initializes and starts the OrderWorker in a separate daemon thread.
-        * @return The initialized OrderWorker instance.
-    **/
-    private static OrderWorker startOrderWorker() {
-        try {
-            // Instantiate concrete implementations in the Composition Root
-            OrderWorker worker = new OrderWorker(new CartServiceImpl());
-            
-            // Assign a specific name to the thread for easier debugging and logging
-            Thread workerThread = new Thread(worker, "OrderWorker-Daemon");
-            workerThread.setDaemon(true);
-            workerThread.start();
-            
-            return worker;
-        } catch (Exception e) {
-            System.err.println("CRITICAL: Failed to initialize OrderWorker.");
-            throw new RuntimeException("Failed to initialize OrderWorker", e);
-        }
-    }
-
-    /**
         * Creates and starts the Sun HttpServer.
         * @return The started HttpServer instance.
         * @throws IOException If an I/O error occurs during server creation.
     **/
     private static HttpServer startHttpServer() throws IOException {
-        HttpServer server = HttpServer.create(new InetSocketAddress(PORT), 0);
+        String bindAddress = System.getenv().getOrDefault("SERVER_BIND_ADDRESS", "0.0.0.0");
+        int port = getIntEnv("SERVER_PORT", 9999);
+        HttpServer server = HttpServer.create(new InetSocketAddress(bindAddress, port), 0);
         server.createContext("/", new FacadeHandler());
         server.setExecutor(Executors.newCachedThreadPool());
         server.start();
         return server;
+    }
+
+    private static int getIntEnv(String key, int defaultValue) {
+        String value = System.getenv(key);
+        if (value == null || value.isBlank()) {
+            return defaultValue;
+        }
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            throw new IllegalStateException("Invalid integer environment variable: " + key, e);
+        }
     }
     
     static class FacadeHandler implements HttpHandler {
