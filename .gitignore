@@ -1,6 +1,44 @@
-.gitignore
-.env
-mysql
-target
+# Build & Dependencies
+target/
+__pycache__/
+
+# Local Data / Assets
+mysql/
 webui/
 assets/
+
+# Terraform local cache & providers
+k8s-multipass/terraform/.terraform/
+
+# Terraform state & lock files
+k8s-multipass/terraform/terraform.tfstate
+k8s-multipass/terraform/terraform.tfstate.*
+k8s-multipass/terraform/.terraform.tfstate.lock.info
+k8s-multipass/terraform/crash.log
+k8s-multipass/terraform/crash.*.log
+
+# Local Terraform variables / host-specific configuration
+k8s-multipass/terraform/terraform.tfvars
+k8s-multipass/terraform/terraform.tfvars.*
+!k8s-multipass/terraform/terraform.tfvars.example
+
+# Local Ansible variables, secrets & retry files
+k8s-multipass/ansible/vars/cloudstore.local.yml
+*.retry
+
+# Generated runtime files
+k8s-multipass/terraform/hosts.ini
+k8s-multipass/terraform/cloud-init.rendered.yml
+
+# Local SSH keys
+k8s-multipass/terraform/id_ed25519
+k8s-multipass/terraform/id_ed25519.pub
+
+# Env & Secrets
+.env
+*.secret.yaml
+
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
