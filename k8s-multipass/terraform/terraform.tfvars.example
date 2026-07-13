@@ -1,0 +1,22 @@
+# Optional host-local overrides.
+# Copy this file to terraform.tfvars only when the defaults do not fit a host.
+
+# ubuntu_image = "24.04"
+
+# control_plane_count = 1
+worker_count = 3
+
+# control_plane_cpus   = 2
+# worker_cpus          = 2
+# control_plane_memory = "2G"
+# worker_memory        = "2G"
+# control_plane_disk   = "10G"
+# worker_disk          = "10G"
+
+# ssh_public_key_file  = "id_ed25519.pub"
+# ssh_private_key_path = "~/.ssh/cloudstore_k8s"
+
+# Host-local Multipass network.
+# Example on Windows 11 Home + VirtualBox after `multipass networks`:
+# multipass_network_name = "Wi-Fi"
+# multipass_command_timeout = 1800
