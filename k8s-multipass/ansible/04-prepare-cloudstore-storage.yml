@@ -1,0 +1,24 @@
+---
+- name: Prepare local storage directories for CloudStore data services
+  hosts: workers
+  become: true
+
+  tasks:
+    - name: Ensure at least 3 worker nodes exist
+      assert:
+        that:
+          - groups["workers"] | length >= 3
+        fail_msg: "CloudStore local deployment requires at least 3 worker nodes."
+
+    - name: Create CloudStore data directories only on the data node
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0777"
+      loop:
+        - /var/lib/cloudstore/mysql
+        - /var/lib/cloudstore/redis
+        - /var/lib/cloudstore/rabbitmq
+      when: inventory_hostname == groups["workers"][2]

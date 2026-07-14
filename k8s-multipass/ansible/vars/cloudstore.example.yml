@@ -1,0 +1,15 @@
+cloudstore_namespace: cloudstore
+
+db_name: cloudstore_db
+db_user: user
+db_password: pwd
+mysql_root_password: rootpwd
+
+rabbitmq_username: cloudstore
+rabbitmq_password: change-me
+rabbitmq_vhost: "/"
+
+jwt_secret: "REPLACE_WITH_OPENSSL_RAND_BASE64_32"
+jwt_expiration_ms: "3600000"
+jwt_issuer: cloudstore-auth
+jwt_audience: cloudstore-client

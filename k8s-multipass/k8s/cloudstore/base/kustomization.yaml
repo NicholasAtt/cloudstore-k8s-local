@@ -1,0 +1,19 @@
+namespace: cloudstore
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+configMapGenerator:
+  - name: mysql-initdb
+    files:
+      - CloudStoreDB.sql=mysql-initdb.sql
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - mysql.yaml
+  - redis.yaml
+  - rabbitmq.yaml
+  - backend.yaml
+  - frontend.yaml
+  - order-worker.yaml

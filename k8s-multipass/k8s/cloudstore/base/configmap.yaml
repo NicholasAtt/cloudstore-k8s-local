@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloudstore-config
+  namespace: cloudstore
+data:
+  DB_HOST: mysql
+  DB_PORT: "3306"
+  DB_NAME: cloudstore_db
+  DB_USER: user
+  DB_SSL_MODE: PREFERRED
+  DB_SERVER_TIMEZONE: UTC
+  DB_ALLOW_PUBLIC_KEY_RETRIEVAL: "true"
+
+  SERVER_BIND_ADDRESS: 0.0.0.0
+  SERVER_PORT: "9999"
+
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  REDIS_PASSWORD: ""
+  REDIS_TLS_ENABLED: "false"
+
+  RABBITMQ_HOST: rabbitmq
+  RABBITMQ_PORT: "5672"
+  RABBITMQ_USERNAME: cloudstore
+  RABBITMQ_VHOST: "/"
+  RABBITMQ_TLS_ENABLED: "false"
+
+  BACKEND_SCHEME: http
+  BACKEND_HOST: backend
+  BACKEND_PORT: "9999"
+
+  JWT_EXPIRATION_MS: "3600000"
+  JWT_ISSUER: cloudstore-auth
+  JWT_AUDIENCE: cloudstore-client

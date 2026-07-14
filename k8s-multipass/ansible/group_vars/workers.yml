@@ -1,0 +1,2 @@
+---
+kubeadm_ignore_num_cpu: true

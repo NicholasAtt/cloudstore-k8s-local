@@ -1,0 +1,189 @@
+---
+- name: Deploy CloudStore on Kubernetes
+  hosts: control_plane
+  become: false
+
+  vars:
+    kubeconfig: /home/ubuntu/.kube/config
+    cloudstore_k8s_src: ../k8s/cloudstore
+    cloudstore_k8s_dest: /tmp/cloudstore-k8s
+
+  pre_tasks:
+    - name: Load CloudStore example variables
+      include_vars: vars/cloudstore.example.yml
+
+    - name: Check for local CloudStore variables
+      stat:
+        path: "{{ playbook_dir }}/vars/cloudstore.local.yml"
+      delegate_to: localhost
+      become: false
+      register: cloudstore_local_vars
+
+    - name: Require local CloudStore variables
+      assert:
+        that:
+          - cloudstore_local_vars.stat.exists
+        fail_msg: "Copy ansible/vars/cloudstore.example.yml to ansible/vars/cloudstore.local.yml and set real local secrets before deploying."
+
+    - name: Load local CloudStore variables
+      include_vars: vars/cloudstore.local.yml
+
+    - name: Validate required CloudStore variables
+      assert:
+        that:
+          - cloudstore_namespace | length > 0
+          - db_password | length > 0
+          - mysql_root_password | length > 0
+          - rabbitmq_password | length > 0
+          - jwt_secret | length > 20
+          - jwt_secret != "REPLACE_WITH_OPENSSL_RAND_BASE64_32"
+        fail_msg: "CloudStore local variables are incomplete. Set DB/RabbitMQ passwords and a real JWT secret."
+      no_log: true
+
+  tasks:
+    - name: Copy CloudStore Kubernetes manifests to control plane
+      copy:
+        src: "{{ cloudstore_k8s_src }}/"
+        dest: "{{ cloudstore_k8s_dest }}/"
+        owner: ubuntu
+        group: ubuntu
+        mode: preserve
+
+    - name: Create CloudStore namespace
+      command: kubectl apply -f "{{ cloudstore_k8s_dest }}/base/namespace.yaml"
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: true
+
+    - name: Create CloudStore application secret
+      shell: |
+        kubectl -n {{ cloudstore_namespace }} create secret generic cloudstore-secret \
+          --from-literal=DB_PASSWORD={{ db_password | quote }} \
+          --from-literal=MYSQL_ROOT_PASSWORD={{ mysql_root_password | quote }} \
+          --from-literal=RABBITMQ_PASSWORD={{ rabbitmq_password | quote }} \
+          --from-literal=JWT_SECRET={{ jwt_secret | quote }} \
+          --dry-run=client -o yaml | kubectl apply -f -
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      no_log: true
+      changed_when: true
+
+    - name: Deploy CloudStore manifests
+      command: kubectl apply -k "{{ cloudstore_k8s_dest }}/overlays/local"
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: true
+
+    - name: Wait for MySQL rollout
+      command: kubectl -n {{ cloudstore_namespace }} rollout status statefulset/mysql --timeout=900s
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+
+    - name: Wait for Redis rollout
+      command: kubectl -n {{ cloudstore_namespace }} rollout status deployment/redis --timeout=180s
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+
+    - name: Wait for RabbitMQ rollout
+      command: kubectl -n {{ cloudstore_namespace }} rollout status deployment/rabbitmq --timeout=240s
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+
+    - name: Wait for backend rollout
+      command: kubectl -n {{ cloudstore_namespace }} rollout status deployment/backend --timeout=1200s
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+
+    - name: Wait for frontend rollout
+      command: kubectl -n {{ cloudstore_namespace }} rollout status deployment/frontend --timeout=1200s
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+
+    - name: Wait for order-worker rollout
+      command: kubectl -n {{ cloudstore_namespace }} rollout status deployment/order-worker --timeout=1200s
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+
+    - name: Remove previous backend health smoke pod
+      command: kubectl -n {{ cloudstore_namespace }} delete pod backend-health-smoke --ignore-not-found
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+
+    - name: Functional health test backend from inside Kubernetes
+      command: >
+        kubectl -n {{ cloudstore_namespace }} run backend-health-smoke
+        --rm -i --restart=Never
+        --image=curlimages/curl:8.11.1
+        --pod-running-timeout=300s
+        --command
+        --
+        curl -fsS http://backend:9999/
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+
+    - name: Remove previous backend DB smoke pod
+      command: kubectl -n {{ cloudstore_namespace }} delete pod backend-db-smoke --ignore-not-found
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+
+    - name: Functional test backend getAllProducts against MySQL seed
+      command: >
+        kubectl -n {{ cloudstore_namespace }} run backend-db-smoke
+        --rm -i --restart=Never
+        --image=python:3.11-slim
+        --pod-running-timeout=300s
+        --command
+        --
+        python -c 'import json, urllib.request;
+        payload=json.dumps({"method":"getAllProducts","args":[]}).encode("utf-8");
+        req=urllib.request.Request("http://backend:9999/", data=payload, headers={"Content-Type":"application/json"}, method="POST");
+        body=urllib.request.urlopen(req, timeout=15).read().decode("utf-8");
+        data=json.loads(body);
+        assert data.get("ok") is True, data;
+        assert isinstance(data.get("data"), list), data;
+        assert len(data["data"]) > 0, data;
+        assert any(p.get("id") == 1 and p.get("name") == "Air Freshener" for p in data["data"]), data;
+        print("OK: backend getAllProducts reads demo products from MySQL")'
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+
+    - name: Remove previous frontend health smoke pod
+      command: kubectl -n {{ cloudstore_namespace }} delete pod frontend-health-smoke --ignore-not-found
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+
+    - name: Functional health test frontend from inside Kubernetes
+      command: >
+        kubectl -n {{ cloudstore_namespace }} run frontend-health-smoke
+        --rm -i --restart=Never
+        --image=curlimages/curl:8.11.1
+        --pod-running-timeout=300s
+        --command
+        --
+        curl -fsS http://frontend:8501/_stcore/health
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+
+    - name: Show node placement
+      command: kubectl -n {{ cloudstore_namespace }} get pods -o wide
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+
+    - name: Show CloudStore resources
+      command: kubectl -n {{ cloudstore_namespace }} get pods,svc,pvc -o wide
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false

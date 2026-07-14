@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-worker
+  namespace: cloudstore
+spec:
+  replicas: 1
+  progressDeadlineSeconds: 1200
+  selector:
+    matchLabels:
+      app: order-worker
+  template:
+    metadata:
+      labels:
+        app: order-worker
+    spec:
+      nodeSelector:
+        cloudstore.role: worker
+      initContainers:
+        - name: wait-for-dependencies
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z mysql 3306; do echo waiting for mysql; sleep 2; done
+              until nc -z rabbitmq 5672; do echo waiting for rabbitmq; sleep 2; done
+      containers:
+        - name: order-worker
+          image: ghcr.io/nicholasatt/cloudstore-k8s-local-server:local
+          imagePullPolicy: IfNotPresent
+          command:
+            - java
+            - -cp
+            - /app/classes:/app/dependency/*
+            - com.cloudstore.server.messaging.OrderWorkerApplication
+          envFrom:
+            - configMapRef:
+                name: cloudstore-config
+            - secretRef:
+                name: cloudstore-secret

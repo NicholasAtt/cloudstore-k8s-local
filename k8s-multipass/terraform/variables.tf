@@ -15,7 +15,7 @@ variable "control_plane_count" {
 variable "control_plane_cpus" {
   description = "vCPUs allocated to each control-plane node"
   type        = number
-  default     = 1
+  default     = 2
 }
 
 variable "control_plane_memory" {
@@ -41,7 +41,7 @@ variable "worker_count" {
 variable "worker_cpus" {
   description = "vCPUs allocated to each worker node"
   type        = number
-  default     = 1
+  default     = 2
 }
 
 variable "worker_memory" {

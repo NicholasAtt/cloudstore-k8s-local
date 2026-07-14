@@ -21,7 +21,13 @@
       when: not already_joined.stat.exists
 
     - name: Join the cluster
-      command: "{{ join_command }} --ignore-preflight-errors=NumCPU"
+      command: >-
+        {{ join_command }}
+        {{ '--ignore-preflight-errors=NumCPU'
+           if kubeadm_ignore_num_cpu | bool
+           else '' }}
+      args:
+        creates: /etc/kubernetes/kubelet.conf
       when: not already_joined.stat.exists
 
     - name: Node already joined — skip

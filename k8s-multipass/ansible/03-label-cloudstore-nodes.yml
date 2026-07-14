@@ -1,0 +1,37 @@
+---
+- name: Label Kubernetes worker nodes for CloudStore placement
+  hosts: control_plane
+  become: false
+  vars:
+    kubeconfig: /home/ubuntu/.kube/config
+
+  tasks:
+    - name: Ensure at least 3 worker nodes exist
+      assert:
+        that:
+          - groups["workers"] | length >= 3
+        fail_msg: "CloudStore local deployment requires at least 3 worker nodes."
+
+    - name: Label first worker as application node
+      command: kubectl label node {{ groups["workers"][0] }} cloudstore.role=app --overwrite
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: true
+
+    - name: Label second worker as async worker node
+      command: kubectl label node {{ groups["workers"][1] }} cloudstore.role=worker --overwrite
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: true
+
+    - name: Label third worker as data node
+      command: kubectl label node {{ groups["workers"][2] }} cloudstore.role=data --overwrite
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: true
+
+    - name: Show node labels
+      command: kubectl get nodes --show-labels
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
