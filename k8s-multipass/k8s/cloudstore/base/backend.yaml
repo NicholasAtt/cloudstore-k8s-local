@@ -28,7 +28,7 @@ spec:
               until nc -z rabbitmq 5672; do echo waiting for rabbitmq; sleep 2; done
       containers:
         - name: backend
-          image: ghcr.io/nicholasatt/cloudstore-k8s-local-server:local
+          image: ghcr.io/nicholasatt/cloudstore-k8s-local-server:main
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 9999
